@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>iPhone Tab Webpage</title>
+<style>
+  body, html {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    overflow: hidden;
+    font-family: Arial, sans-serif;
+  }
+
+  /* 탭 버튼 스타일 */
+  .tab-buttons {
+    display: flex;
+    justify-content: space-around;
+    background-color: #f0f0f0;
+    border-bottom: 1px solid #ccc;
+  }
+
+  .tab-buttons button {
+    flex: 1;
+    padding: 15px;
+    font-size: 16px;
+    border: none;
+    background: none;
+    cursor: pointer;
+  }
+
+  .tab-buttons button.active {
+    background-color: #ddd;
+    font-weight: bold;
+  }
+
+  /* iframe 컨테이너 */
+  .tab-content {
+    height: calc(100% - 50px); /* 탭 높이만큼 빼기 */
+  }
+
+  .tab-content iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+  }
+</style>
+</head>
+<body>
+
+<div class="tab-buttons">
+  <button class="active" onclick="openTab(0)">Google</button>
+  <button onclick="openTab(1)">Bing</button>
+  <button onclick="openTab(2)">Naver</button>
+</div>
+
+<div class="tab-content">
+  <iframe src="https://www.google.com/webhp?igu=1" id="tab-0"></iframe>
+  <iframe src="https://www.google.com/webhp?igu=1" id="tab-1" style="display:none;"></iframe>
+  <iframe src="https://www.google.com/webhp?igu=1" id="tab-2" style="display:none;"></iframe>
+</div>
+
+<script>
+  function openTab(index) {
+    const iframes = document.querySelectorAll('.tab-content iframe');
+    const buttons = document.querySelectorAll('.tab-buttons button');
+
+    iframes.forEach((frame, i) => {
+      frame.style.display = (i === index) ? 'block' : 'none';
+    });
+
+    buttons.forEach((btn, i) => {
+      btn.classList.toggle('active', i === index);
+    });
+  }
+
+  // 화면 크기 변화 시 iframe 높이 조정 (iPhone 대응)
+  window.addEventListener('resize', () => {
+    const tabHeight = document.querySelector('.tab-buttons').offsetHeight;
+    document.querySelectorAll('.tab-content iframe').forEach(frame => {
+      frame.style.height = (window.innerHeight - tabHeight) + 'px';
+    });
+  });
+
+  // 초기 높이 세팅
+  window.dispatchEvent(new Event('resize'));
+</script>
+
+</body>
+</html>
