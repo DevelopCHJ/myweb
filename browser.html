@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Naver Split View</title>
+
+  <style>
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      font-family: sans-serif;
+    }
+
+    .container {
+      display: flex;
+      flex-direction: row; /* 세로로 나누고 싶다면 column 으로 변경 */
+      height: 100vh;
+      width: 100%;
+    }
+
+    .split {
+      flex: 1;
+      border: 1px solid #ccc;
+      overflow: hidden;
+      position: relative;
+    }
+
+    iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+    }
+
+    /* 간단한 splitter (드래그로 크기 조정) */
+    .divider {
+      width: 5px;
+      background-color: #ddd;
+      cursor: col-resize;
+    }
+
+    @media (max-width: 768px) {
+      .container {
+        flex-direction: column;
+      }
+      .divider {
+        width: 100%;
+        height: 5px;
+        cursor: row-resize;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="split">
+      <iframe src="https://www.google.com/webhp?igu=1" title="Naver 1"></iframe>
+    </div>
+    <div class="divider"></div>
+    <div class="split">
+      <iframe src="https://www.google.com/webhp?igu=1" title="Naver 2"></iframe>
+    </div>
+    <div class="divider"></div>
+    <div class="split">
+      <iframe src="https://www.google.com/webhp?igu=1" title="Naver 3"></iframe>
+    </div>
+  </div>
+
+  <script>
+    // 간단한 splitter 기능 구현
+    const dividers = document.querySelectorAll('.divider');
+    let isDragging = false;
+    let currentDivider;
+
+    dividers.forEach(div => {
+      div.addEventListener('mousedown', e => {
+        isDragging = true;
+        currentDivider = e.target;
+        document.body.style.cursor = 'col-resize';
+      });
+    });
+
+    document.addEventListener('mousemove', e => {
+      if (!isDragging) return;
+      const container = document.querySelector('.container');
+      const prev = currentDivider.previousElementSibling;
+      const next = currentDivider.nextElementSibling;
+
+      const rect = container.getBoundingClientRect();
+      const totalWidth = rect.width;
+
+      let prevWidth = e.clientX - rect.left;
+      let nextWidth = totalWidth - prevWidth - currentDivider.offsetWidth;
+
+      if (prevWidth < 50 || nextWidth < 50) return;
+
+      const totalFlex = prevWidth + nextWidth;
+      prev.style.flex = prevWidth / totalFlex;
+      next.style.flex = nextWidth / totalFlex;
+    });
+
+    document.addEventListener('mouseup', () => {
+      isDragging = false;
+      document.body.style.cursor = 'default';
+    });
+  </script>
+</body>
+</html>
