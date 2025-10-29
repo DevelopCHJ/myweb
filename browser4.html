@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Responsive iFrame Tabs</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: sans-serif;
+      background: #f0f0f0;
+    }
+
+    .tab-container {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      width: 100%;
+    }
+
+    .tab-buttons {
+      display: flex;
+      justify-content: space-around;
+      background-color: #333;
+    }
+
+    .tab-buttons button {
+      flex: 1;
+      padding: 15px;
+      color: white;
+      background: #444;
+      border: none;
+      cursor: pointer;
+      font-size: 16px;
+    }
+
+    .tab-buttons button.active {
+      background: #007AFF;
+    }
+
+    .tab-content {
+      flex-grow: 1;
+      width: 100%;
+      position: relative;
+    }
+
+    iframe {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      border: none;
+      transform-origin: 0 0;
+    }
+
+    /* 반응형 스케일 조정 */
+    @media (max-width: 768px) {
+      iframe {
+        transform: scale(1);
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="tab-container">
+    <div class="tab-buttons">
+      <button class="active" onclick="showTab(0)">탭 1</button>
+      <button onclick="showTab(1)">탭 2</button>
+      <button onclick="showTab(2)">탭 3</button>
+    </div>
+
+    <div class="tab-content">
+      <iframe id="iframe1" src="https://www.google.com/webhp?igu=1" style="display:block;"></iframe>
+      <iframe id="iframe2" src="https://www.google.com/webhp?igu=1" style="display:none;"></iframe>
+      <iframe id="iframe3" src="https://www.google.com/webhp?igu=1" style="display:none;"></iframe>
+    </div>
+  </div>
+
+  <script>
+    const iframes = [
+      document.getElementById('iframe1'),
+      document.getElementById('iframe2'),
+      document.getElementById('iframe3')
+    ];
+    const buttons = document.querySelectorAll('.tab-buttons button');
+
+    function showTab(index) {
+      iframes.forEach((iframe, i) => {
+        iframe.style.display = i === index ? 'block' : 'none';
+      });
+      buttons.forEach((btn, i) => {
+        btn.classList.toggle('active', i === index);
+      });
+    }
+
+    // iframe 자동 축소 기능 (iPhone 포함)
+    function resizeIframes() {
+      const containerWidth = window.innerWidth;
+      const scale = containerWidth / 1200; // 기준 너비 1200px 가정
+      iframes.forEach(iframe => {
+        iframe.style.transform = `scale(${scale})`;
+        iframe.style.width = `${1200}px`;
+        iframe.style.height = `${window.innerHeight / scale}px`;
+      });
+    }
+
+    window.addEventListener('resize', resizeIframes);
+    window.addEventListener('orientationchange', resizeIframes);
+    window.addEventListener('load', resizeIframes);
+  </script>
+</body>
+</html>
