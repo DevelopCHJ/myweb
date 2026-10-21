@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>오프라인 PDF 뷰어 및 주석 에디터</title>
+  <title>모바일 겸용 PDF 뷰어 및 주석 에디터</title>
   
   <!-- 오프라인 라이브러리 로드 -->
   <script src="./libs/pdf.min.js"></script>
@@ -65,11 +65,14 @@
       box-shadow: 0 0 0 3px rgba(49, 130, 206, 0.15);
     }
 
-    /* 폴더 경로 선택 영역 */
+    /* 경로/파일 선택 영역 */
     .folder-picker-box {
       padding: 12px 16px;
       background-color: #f7fafc;
       border-bottom: 1px solid #edf2f7;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
     }
 
     .btn-folder {
@@ -82,6 +85,7 @@
       font-weight: 600;
       font-size: 13px;
       cursor: pointer;
+      text-align: center;
       transition: background-color 0.2s;
     }
 
@@ -90,7 +94,6 @@
     }
 
     .path-display {
-      margin-top: 8px;
       font-size: 11px;
       color: #718096;
       word-break: break-all;
@@ -278,15 +281,19 @@
     </div>
 
     <div class="folder-picker-box">
-      <button id="btn-select-folder" class="btn-folder">
-        📁 폴더 선택 (D:\PDFViewer\PDFILE)
-      </button>
-      <div id="path-display" class="path-display">폴더 미선택 (클릭하여 경로 선택)</div>
+      <!-- PC용 폴더 선택 버튼 -->
+      <button id="btn-select-folder" class="btn-folder">📁 폴더 선택 (PC 전용)</button>
+      
+      <!-- 모바일/아이폰 겸용 파일 다중 선택 입력 (숨김 처리 후 버튼으로 연동) -->
+      <input type="file" id="file-selector-mobile" accept="application/pdf" multiple style="display: none;">
+      <button id="btn-select-mobile" class="btn-folder" style="background-color: #3182ce;">📱 PDF 파일들 선택 (모바일/아이폰용)</button>
+      
+      <div id="path-display" class="path-display">폴더 또는 파일 미선택</div>
     </div>
 
     <div class="file-list-container" id="file-list">
       <div class="empty-state">
-        상단 버튼을 눌러 PDF 폴더를 지정해주세요.
+        폴더 또는 PDF 파일들을 선택해주세요.
       </div>
     </div>
   </div>
@@ -326,18 +333,22 @@
   </div>
 
   <script>
-    // 오프라인용 PDF.js 워커 경로 설정 (로컬 파일 참조)
     pdfjsLib.GlobalWorkerOptions.workerSrc = './libs/pdf.worker.min.js';
 
     let dirHandle = null;
     let fileHandles = [];
+    let fileObjects = []; // 모바일용 File 객체 배열
     let currentFileHandle = null;
+    let currentFileObj = null;
     let currentPdfBytes = null;
     let pdfDoc = null;
     let currentPageNum = 1;
     let fabricCanvas = null;
+    let isMobileMode = false;
 
     const btnSelectFolder = document.getElementById('btn-select-folder');
+    const btnSelectMobile = document.getElementById('btn-select-mobile');
+    const fileSelectorMobile = document.getElementById('file-selector-mobile');
     const pathDisplay = document.getElementById('path-display');
     const fileListEl = document.getElementById('file-list');
     const searchInput = document.getElementById('search-input');
@@ -353,11 +364,17 @@
     }
     initFabric();
 
+    // 1. PC용 폴더 선택 (File System Access API)
     btnSelectFolder.addEventListener('click', async () => {
       try {
+        if (!window.showDirectoryPicker) {
+          alert('이 브라우저는 폴더 선택을 지원하지 않습니다. 아래 모바일/아이폰용 버튼을 사용해주세요.');
+          return;
+        }
         dirHandle = await window.showDirectoryPicker();
+        isMobileMode = false;
         pathDisplay.textContent = `선택된 폴더: ${dirHandle.name}`;
-        await loadPdfFileList();
+        await loadPdfFileListPC();
       } catch (err) {
         if (err.name !== 'AbortError') {
           alert('폴더를 열 수 없습니다: ' + err.message);
@@ -365,17 +382,17 @@
       }
     });
 
-    async function loadPdfFileList() {
+    async function loadPdfFileListPC() {
       fileHandles = [];
       for await (const entry of dirHandle.values()) {
         if (entry.kind === 'file' && entry.name.toLowerCase().endsWith('.pdf')) {
           fileHandles.push(entry);
         }
       }
-      renderFileList(fileHandles);
+      renderFileListPC(fileHandles);
     }
 
-    function renderFileList(list) {
+    function renderFileListPC(list) {
       fileListEl.innerHTML = '';
       if (list.length === 0) {
         fileListEl.innerHTML = '<div class="empty-state">PDF 파일이 없습니다.</div>';
@@ -385,32 +402,80 @@
         const item = document.createElement('div');
         item.className = 'file-item';
         item.innerHTML = `<span class="file-name" title="${handle.name}">📄 ${handle.name}</span>`;
-        item.addEventListener('click', () => selectFile(handle, item));
+        item.addEventListener('click', () => selectFilePC(handle, item));
         fileListEl.appendChild(item);
       });
     }
 
-    searchInput.addEventListener('input', (e) => {
-      const query = e.target.value.toLowerCase();
-      const filtered = fileHandles.filter(h => h.name.toLowerCase().includes(query));
-      renderFileList(filtered);
-    });
-
-    async function selectFile(handle, element) {
+    async function selectFilePC(handle, element) {
       document.querySelectorAll('.file-item').forEach(el => el.classList.remove('active'));
       element.classList.add('active');
 
       currentFileHandle = handle;
+      currentFileObj = null;
       const file = await handle.getFile();
       currentPdfBytes = await file.arrayBuffer();
 
-      pdfDoc = await pdfjsLib.getDocument({ data: currentPdfBytes.slice(0) }).promise;
+      await loadAndRenderPdf(currentPdfBytes);
+    }
+
+    // 2. 모바일/아이폰용 파일 다중 선택
+    btnSelectMobile.addEventListener('click', () => {
+      fileSelectorMobile.click();
+    });
+
+    fileSelectorMobile.addEventListener('change', (e) => {
+      const files = Array.from(e.target.files).filter(f => f.name.toLowerCase().endsWith('.pdf'));
+      if (files.length === 0) return;
+
+      isMobileMode = true;
+      fileObjects = files;
+      pathDisplay.textContent = `선택된 파일 수: ${files.length}개 (모바일 모드)`;
+      renderFileListMobile(fileObjects);
+    });
+
+    function renderFileListMobile(list) {
+      fileListEl.innerHTML = '';
+      list.forEach((file, index) => {
+        const item = document.createElement('div');
+        item.className = 'file-item';
+        item.innerHTML = `<span class="file-name" title="${file.name}">📱 ${file.name}</span>`;
+        item.addEventListener('click', () => selectFileMobile(file, item));
+        fileListEl.appendChild(item);
+      });
+    }
+
+    async function selectFileMobile(file, element) {
+      document.querySelectorAll('.file-item').forEach(el => el.classList.remove('active'));
+      element.classList.add('active');
+
+      currentFileObj = file;
+      currentFileHandle = null;
+      currentPdfBytes = await file.arrayBuffer();
+
+      await loadAndRenderPdf(currentPdfBytes);
+    }
+
+    async function loadAndRenderPdf(pdfBytes) {
+      pdfDoc = await pdfjsLib.getDocument({ data: pdfBytes.slice(0) }).promise;
       totalPagesSpan.textContent = pdfDoc.numPages;
       currentPageNum = 1;
 
       await renderPage(currentPageNum);
       btnSave.disabled = false;
     }
+
+    // 검색 필터링
+    searchInput.addEventListener('input', (e) => {
+      const query = e.target.value.toLowerCase();
+      if (isMobileMode) {
+        const filtered = fileObjects.filter(f => f.name.toLowerCase().includes(query));
+        renderFileListMobile(filtered);
+      } else {
+        const filtered = fileHandles.filter(h => h.name.toLowerCase().includes(query));
+        renderFileListPC(filtered);
+      }
+    });
 
     async function renderPage(pageNum) {
       currentPageSpan.textContent = pageNum;
@@ -478,8 +543,9 @@
     document.getElementById('tool-text').addEventListener('click', () => setTool('text'));
     document.getElementById('tool-clear').addEventListener('click', () => fabricCanvas.clear());
 
+    // 3. 저장 버튼 (PC는 원본 덮어쓰기, 모바일은 파일 다운로드 저장)
     btnSave.addEventListener('click', async () => {
-      if (!currentFileHandle || !currentPdfBytes) return;
+      if (!currentPdfBytes) return;
 
       try {
         btnSave.disabled = true;
@@ -497,12 +563,24 @@
         }
 
         const modifiedPdfBytes = await pdfDocLib.save();
-        const writable = await currentFileHandle.createWritable();
-        await writable.write(modifiedPdfBytes);
-        await writable.close();
+
+        if (isMobileMode || !currentFileHandle) {
+          // 모바일 환경: 브라우저 다운로드 방식으로 수정된 PDF 파일 내보내기
+          const blob = new Blob([modifiedPdfBytes], { type: 'application/pdf' });
+          const link = document.createElement('a');
+          link.href = URL.createObjectURL(blob);
+          link.download = currentFileObj ? currentFileObj.name : 'annotated.pdf';
+          link.click();
+          alert('수정된 PDF 파일이 다운로드 되었습니다.');
+        } else {
+          // PC 환경: 원본 파일에 직접 덮어쓰기
+          const writable = await currentFileHandle.createWritable();
+          await writable.write(modifiedPdfBytes);
+          await writable.close();
+          alert('원본 파일에 성공적으로 저장되었습니다!');
+        }
 
         currentPdfBytes = modifiedPdfBytes.buffer;
-        alert(`'${currentFileHandle.name}' 파일에 성공적으로 저장되었습니다!`);
       } catch (err) {
         alert('저장 중 오류가 발생했습니다: ' + err.message);
       } finally {
