@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>오프라인 PDF 뷰어 및 주석 에디터</title>
+  
+  <!-- 오프라인 라이브러리 로드 -->
+  <script src="./libs/pdf.min.js"></script>
+  <script src="./libs/fabric.min.js"></script>
+  <script src="./libs/pdf-lib.min.js"></script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+
+    body {
+      display: flex;
+      height: 100vh;
+      background-color: #f5f5f7;
+      color: #333;
+      overflow: hidden;
+    }
+
+    /* 좌측 사이드바 */
+    .sidebar {
+      width: 320px;
+      min-width: 320px;
+      background-color: #ffffff;
+      border-right: 2px solid #e2e8f0;
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+
+    .search-box {
+      padding: 16px;
+      border-bottom: 1px solid #edf2f7;
+    }
+
+    .search-box label {
+      font-size: 12px;
+      font-weight: 700;
+      color: #4a5568;
+      margin-bottom: 6px;
+      display: block;
+      text-transform: uppercase;
+    }
+
+    .search-input {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #cbd5e0;
+      border-radius: 6px;
+      font-size: 14px;
+      outline: none;
+    }
+
+    .search-input:focus {
+      border-color: #3182ce;
+      box-shadow: 0 0 0 3px rgba(49, 130, 206, 0.15);
+    }
+
+    /* 폴더 경로 선택 영역 */
+    .folder-picker-box {
+      padding: 12px 16px;
+      background-color: #f7fafc;
+      border-bottom: 1px solid #edf2f7;
+    }
+
+    .btn-folder {
+      width: 100%;
+      padding: 10px;
+      background-color: #2b6cb0;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-weight: 600;
+      font-size: 13px;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+
+    .btn-folder:hover {
+      background-color: #2c5282;
+    }
+
+    .path-display {
+      margin-top: 8px;
+      font-size: 11px;
+      color: #718096;
+      word-break: break-all;
+      background: #edf2f7;
+      padding: 6px 8px;
+      border-radius: 4px;
+    }
+
+    /* 목록 영역 */
+    .file-list-container {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px;
+    }
+
+    .file-item {
+      padding: 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 4px;
+      transition: background-color 0.15s;
+    }
+
+    .file-item:hover {
+      background-color: #edf2f7;
+    }
+
+    .file-item.active {
+      background-color: #ebf8ff;
+      border-left: 4px solid #3182ce;
+    }
+
+    .file-name {
+      font-size: 13px;
+      font-weight: 500;
+      color: #2d3748;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 40px 16px;
+      color: #a0aec0;
+      font-size: 13px;
+    }
+
+    /* 우측 메인 영역 */
+    .main-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      height: 100%;
+    }
+
+    .toolbar {
+      height: 56px;
+      background-color: #ffffff;
+      border-bottom: 1px solid #e2e8f0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 20px;
+      z-index: 10;
+    }
+
+    .tool-group {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .tool-btn {
+      padding: 8px 12px;
+      border: 1px solid #cbd5e0;
+      background: white;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      color: #4a5568;
+      transition: all 0.2s;
+    }
+
+    .tool-btn:hover {
+      background-color: #f7fafc;
+      border-color: #a0aec0;
+    }
+
+    .tool-btn.active {
+      background-color: #3182ce;
+      color: white;
+      border-color: #3182ce;
+    }
+
+    .color-picker {
+      width: 28px;
+      height: 28px;
+      border: none;
+      border-radius: 50%;
+      cursor: pointer;
+      background: none;
+    }
+
+    .viewer-wrapper {
+      flex: 1;
+      overflow: auto;
+      background-color: #525659;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      padding: 20px;
+      position: relative;
+    }
+
+    .canvas-container-outer {
+      position: relative;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+      background-color: white;
+    }
+
+    #pdf-canvas {
+      display: block;
+    }
+
+    .fabric-canvas-wrapper {
+      position: absolute;
+      top: 0;
+      left: 0;
+    }
+
+    .bottom-bar {
+      height: 60px;
+      background-color: #ffffff;
+      border-top: 1px solid #e2e8f0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+    }
+
+    .page-controls {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 14px;
+      color: #4a5568;
+    }
+
+    .btn-save {
+      padding: 10px 24px;
+      background-color: #38a169;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 2px 4px rgba(56, 161, 105, 0.2);
+      transition: background-color 0.2s;
+    }
+
+    .btn-save:hover {
+      background-color: #2f855a;
+    }
+
+    .btn-save:disabled {
+      background-color: #cbd5e0;
+      cursor: not-allowed;
+      box-shadow: none;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 좌측 영역 -->
+  <div class="sidebar">
+    <div class="search-box">
+      <label>검색창</label>
+      <input type="text" id="search-input" class="search-input" placeholder="PDF 파일명 검색...">
+    </div>
+
+    <div class="folder-picker-box">
+      <button id="btn-select-folder" class="btn-folder">
+        📁 폴더 선택 (D:\PDFViewer\PDFILE)
+      </button>
+      <div id="path-display" class="path-display">폴더 미선택 (클릭하여 경로 선택)</div>
+    </div>
+
+    <div class="file-list-container" id="file-list">
+      <div class="empty-state">
+        상단 버튼을 눌러 PDF 폴더를 지정해주세요.
+      </div>
+    </div>
+  </div>
+
+  <!-- 우측 영역 -->
+  <div class="main-content">
+    <div class="toolbar">
+      <div class="tool-group">
+        <button class="tool-btn active" id="tool-select">선택</button>
+        <button class="tool-btn" id="tool-pen">펜 필기</button>
+        <button class="tool-btn" id="tool-highlighter">형광펜</button>
+        <button class="tool-btn" id="tool-text">텍스트 입력</button>
+        <input type="color" id="tool-color" class="color-picker" value="#ff0000" title="색상 선택">
+      </div>
+      <div class="tool-group">
+        <button class="tool-btn" id="tool-clear">필기 전체 지우기</button>
+      </div>
+    </div>
+
+    <div class="viewer-wrapper" id="viewer-wrapper">
+      <div class="canvas-container-outer" id="canvas-container-outer">
+        <canvas id="pdf-canvas"></canvas>
+        <div class="fabric-canvas-wrapper">
+          <canvas id="annotation-canvas"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <div class="bottom-bar">
+      <div class="page-controls">
+        <button class="tool-btn" id="btn-prev-page">이전</button>
+        <span>페이지: <strong id="current-page">0</strong> / <span id="total-pages">0</span></span>
+        <button class="tool-btn" id="btn-next-page">다음</button>
+      </div>
+      <button id="btn-save-pdf" class="btn-save" disabled>💾 원본 파일에 저장</button>
+    </div>
+  </div>
+
+  <script>
+    // 오프라인용 PDF.js 워커 경로 설정 (로컬 파일 참조)
+    pdfjsLib.GlobalWorkerOptions.workerSrc = './libs/pdf.worker.min.js';
+
+    let dirHandle = null;
+    let fileHandles = [];
+    let currentFileHandle = null;
+    let currentPdfBytes = null;
+    let pdfDoc = null;
+    let currentPageNum = 1;
+    let fabricCanvas = null;
+
+    const btnSelectFolder = document.getElementById('btn-select-folder');
+    const pathDisplay = document.getElementById('path-display');
+    const fileListEl = document.getElementById('file-list');
+    const searchInput = document.getElementById('search-input');
+    const pdfCanvas = document.getElementById('pdf-canvas');
+    const btnSave = document.getElementById('btn-save-pdf');
+    const currentPageSpan = document.getElementById('current-page');
+    const totalPagesSpan = document.getElementById('total-pages');
+
+    function initFabric() {
+      fabricCanvas = new fabric.Canvas('annotation-canvas', { isDrawingMode: false });
+      fabricCanvas.freeDrawingBrush.width = 3;
+      fabricCanvas.freeDrawingBrush.color = '#ff0000';
+    }
+    initFabric();
+
+    btnSelectFolder.addEventListener('click', async () => {
+      try {
+        dirHandle = await window.showDirectoryPicker();
+        pathDisplay.textContent = `선택된 폴더: ${dirHandle.name}`;
+        await loadPdfFileList();
+      } catch (err) {
+        if (err.name !== 'AbortError') {
+          alert('폴더를 열 수 없습니다: ' + err.message);
+        }
+      }
+    });
+
+    async function loadPdfFileList() {
+      fileHandles = [];
+      for await (const entry of dirHandle.values()) {
+        if (entry.kind === 'file' && entry.name.toLowerCase().endsWith('.pdf')) {
+          fileHandles.push(entry);
+        }
+      }
+      renderFileList(fileHandles);
+    }
+
+    function renderFileList(list) {
+      fileListEl.innerHTML = '';
+      if (list.length === 0) {
+        fileListEl.innerHTML = '<div class="empty-state">PDF 파일이 없습니다.</div>';
+        return;
+      }
+      list.forEach(handle => {
+        const item = document.createElement('div');
+        item.className = 'file-item';
+        item.innerHTML = `<span class="file-name" title="${handle.name}">📄 ${handle.name}</span>`;
+        item.addEventListener('click', () => selectFile(handle, item));
+        fileListEl.appendChild(item);
+      });
+    }
+
+    searchInput.addEventListener('input', (e) => {
+      const query = e.target.value.toLowerCase();
+      const filtered = fileHandles.filter(h => h.name.toLowerCase().includes(query));
+      renderFileList(filtered);
+    });
+
+    async function selectFile(handle, element) {
+      document.querySelectorAll('.file-item').forEach(el => el.classList.remove('active'));
+      element.classList.add('active');
+
+      currentFileHandle = handle;
+      const file = await handle.getFile();
+      currentPdfBytes = await file.arrayBuffer();
+
+      pdfDoc = await pdfjsLib.getDocument({ data: currentPdfBytes.slice(0) }).promise;
+      totalPagesSpan.textContent = pdfDoc.numPages;
+      currentPageNum = 1;
+
+      await renderPage(currentPageNum);
+      btnSave.disabled = false;
+    }
+
+    async function renderPage(pageNum) {
+      currentPageSpan.textContent = pageNum;
+      const page = await pdfDoc.getPage(pageNum);
+      const viewport = page.getViewport({ scale: 1.25 });
+
+      pdfCanvas.width = viewport.width;
+      pdfCanvas.height = viewport.height;
+
+      const ctx = pdfCanvas.getContext('2d');
+      await page.render({ canvasContext: ctx, viewport: viewport }).promise;
+
+      fabricCanvas.setWidth(viewport.width);
+      fabricCanvas.setHeight(viewport.height);
+      fabricCanvas.clear();
+      fabricCanvas.renderAll();
+    }
+
+    document.getElementById('btn-prev-page').addEventListener('click', () => {
+      if (pdfDoc && currentPageNum > 1) {
+        currentPageNum--;
+        renderPage(currentPageNum);
+      }
+    });
+
+    document.getElementById('btn-next-page').addEventListener('click', () => {
+      if (pdfDoc && currentPageNum < pdfDoc.numPages) {
+        currentPageNum++;
+        renderPage(currentPageNum);
+      }
+    });
+
+    const colorPicker = document.getElementById('tool-color');
+    colorPicker.addEventListener('input', (e) => {
+      fabricCanvas.freeDrawingBrush.color = e.target.value;
+    });
+
+    function setTool(toolName) {
+      document.querySelectorAll('.toolbar .tool-btn').forEach(btn => btn.classList.remove('active'));
+      fabricCanvas.isDrawingMode = false;
+
+      if (toolName === 'select') {
+        document.getElementById('tool-select').classList.add('active');
+      } else if (toolName === 'pen') {
+        document.getElementById('tool-pen').classList.add('active');
+        fabricCanvas.isDrawingMode = true;
+        fabricCanvas.freeDrawingBrush.width = 3;
+        fabricCanvas.freeDrawingBrush.color = colorPicker.value;
+      } else if (toolName === 'highlighter') {
+        document.getElementById('tool-highlighter').classList.add('active');
+        fabricCanvas.isDrawingMode = true;
+        fabricCanvas.freeDrawingBrush.width = 16;
+        fabricCanvas.freeDrawingBrush.color = colorPicker.value + '80';
+      } else if (toolName === 'text') {
+        document.getElementById('tool-text').classList.add('active');
+        const text = new fabric.IText('내용 입력', { left: 50, top: 50, fontSize: 18, fill: colorPicker.value });
+        fabricCanvas.add(text);
+        fabricCanvas.setActiveObject(text);
+      }
+    }
+
+    document.getElementById('tool-select').addEventListener('click', () => setTool('select'));
+    document.getElementById('tool-pen').addEventListener('click', () => setTool('pen'));
+    document.getElementById('tool-highlighter').addEventListener('click', () => setTool('highlighter'));
+    document.getElementById('tool-text').addEventListener('click', () => setTool('text'));
+    document.getElementById('tool-clear').addEventListener('click', () => fabricCanvas.clear());
+
+    btnSave.addEventListener('click', async () => {
+      if (!currentFileHandle || !currentPdfBytes) return;
+
+      try {
+        btnSave.disabled = true;
+        btnSave.textContent = '저장 중...';
+
+        const annotationDataUrl = fabricCanvas.toDataURL({ format: 'png' });
+        const pdfDocLib = await PDFLib.PDFDocument.load(currentPdfBytes);
+        const pages = pdfDocLib.getPages();
+        const currentPage = pages[currentPageNum - 1];
+
+        if (fabricCanvas.getObjects().length > 0) {
+          const pngImage = await pdfDocLib.embedPng(annotationDataUrl);
+          const { width, height } = currentPage.getSize();
+          currentPage.drawImage(pngImage, { x: 0, y: 0, width: width, height: height });
+        }
+
+        const modifiedPdfBytes = await pdfDocLib.save();
+        const writable = await currentFileHandle.createWritable();
+        await writable.write(modifiedPdfBytes);
+        await writable.close();
+
+        currentPdfBytes = modifiedPdfBytes.buffer;
+        alert(`'${currentFileHandle.name}' 파일에 성공적으로 저장되었습니다!`);
+      } catch (err) {
+        alert('저장 중 오류가 발생했습니다: ' + err.message);
+      } finally {
+        btnSave.disabled = false;
+        btnSave.textContent = '💾 원본 파일에 저장';
+      }
+    });
+  </script>
+</body>
+</html>
